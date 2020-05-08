@@ -859,7 +859,7 @@ CREATE PROCEDURE spGet_Users
 AS
 BEGIN
 	SELECT (
-		SELECT	userId, firstName, lastName, userName, email, password, goodLoginCount, badLoginCount
+		SELECT	userId, firstName, lastName, userName, email, goodLoginCount, badLoginCount
 		FROM [User]
 		WHERE isDeleted = 0
 		FOR JSON PATH
@@ -951,34 +951,6 @@ END
 
 GO
 
-/*************************************************************************************************
-	
-	Name:		spGet_StoreItems
-	Purpose:	Lists all items from a given store
-	Written:	5/7/2020
-	Author:		John Murray
-	Returns:	JSON list of items from a certain store
-
-**************************************************************************************************/
-
-CREATE PROCEDURE spGet_StoreItems
-	@storeId	INT
-AS
-BEGIN
-	SELECT(
-		SELECT DISTINCT	i.itemId, i.itemName, i.itemDescription, i.avgPrice, si.price,
-						[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
-						[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
-		FROM Store s
-		JOIN StoreItem si	ON si.storeId = s.storeId
-		JOIN Item i			ON i.itemId = si.itemId
-		WHERE s.storeId = @storeId AND s.isDeleted = 0
-		FOR JSON PATH
-	) FOR XML PATH('')
-END
-
-GO
-
 
 /*************************************************************************************************
 	
@@ -1006,6 +978,57 @@ END
 
 GO
 
+/*************************************************************************************************
+	
+	Name:		spGet_StoreWithCheapestPrice
+	Purpose:	Given an item, find what store sells the item for the cheapest price
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON of store that sells the item for the cheapest price
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGet_StoreWithCheapestPrice
+	@itemId	INT
+AS
+BEGIN
+	SELECT(
+		SELECT TOP(1) s.storeId, s.storeName
+		FROM StoreItem si
+		JOIN Store s	ON s.storeId = si.storeId
+		ORDER BY si.price
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spGet_ItemsByDates
+	Purpose:	Given an a start date and end date, list items added to database within that time frame
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON of items added to database within time fame
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGet_ItemsByDates 
+	@startDate	DATE,
+	@endDate	DATE
+AS
+BEGIN
+	SELECT(
+		SELECT si.itemId, si.storeId, si.userId, si.price, si.date, i.itemName
+		FROM StoreItem si
+		JOIN Item i	ON i.itemId = si.itemId
+		WHERE si.date BETWEEN @startDate AND @endDate
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
 
 
 /*
@@ -1116,6 +1139,75 @@ EXEC spAddUpdateDelete_StoreItem 2, 1, 1, 1, 4.00, '2020-05-07 23:06:22.983', 'N
 SELECT * FROM StoreItem;
 SELECT * FROM Item
 
+
+-- Get Items from Brick & Ivy
+EXEC spGet_StoreItemsByStore 1;
+
+-- Get stores that sell Adidas Shoe
+EXEC spGet_StoresByItem 1;
+
+-- Get items less than or equal to 10$
+EXEC spGet_StoreItemsByPrice 10.00;
+
+-- Get list of all stores
+EXEC spGet_ListStores;
+
+-- Get list of all brands
+EXEC spGet_Brands;
+
+-- Get list of all users
+EXEC spGet_Users;
+
+-- Get list of all items
+EXEC spGet_ListItems;
+
+-- Get all items by User 1
+EXEC spGet_StoreItemsByUser 1;
+
+-- Get all items from Nike
+EXEC spGet_ItemsByBrand 1;
+
+-- Get users that have posted for Brick & Ivy
+EXEC spGet_UsersByStore 1;
+
+-- Get store with cheapest Adidas Shoes
+EXEC spGet_StoreWithCheapestPrice 1;
+
+-- Get items submitted from these dates
+EXEC spGet_ItemsByDates '2020-05-06', '2020-05-08';
+
+-- Make user
+EXEC spAddUpdateDelete_User 0, 'test', 'tess', 'testts', 'test@yahoo.com', 'testq';
+EXEC spReset_RegistrationToken 7;
+
+-- Try to login user before confirming email
+EXEC spLogin 7, 'testq';
+
+DECLARE @tokenVar char(10)
+SELECT @tokenVar = token
+FROM UserRegistration
+WHERE userId = 7
+
+-- Confirm user email with token
+EXEC spConfirm_Email 7, @tokenVar;
+
+-- Login user after confirming email
+EXEC spLogin 7, 'testq';
+
+-- Reset the users password
+EXEC spReset_Password 7;
+
+DECLARE @tokenVarP char(30)
+SELECT @tokenVarP = token
+FROM PasswordReset
+WHERE userId = 7
+
+EXEC spConfirm_PasswordReset 7, @tokenVarP, 'testNewPass'
+
+EXEC spLogin 7, 'testNewPass';
+
+-- User 7 now has 2 good login counts, 1 bad login count
+select * from [User]
 
 
 -- Delete everything
