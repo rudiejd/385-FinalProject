@@ -684,6 +684,294 @@ GO
 
 
 
+/*************************************************************************************************
+	
+	Name:		spGetStoreItemsByStore 
+	Purpose:	Gets all store items for a particular store
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of store items from a store
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGetStoreItemsByStore
+	@storeId	INT
+AS
+BEGIN
+	SELECT (
+		SELECT DISTINCT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
+				[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
+				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+		FROM Store s
+		JOIN StoreItem si	ON si.storeId = s.storeId
+		JOIN vwItem i		ON i.itemId = si.itemId
+		WHERE s.storeId = @storeId
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+
+
+/*************************************************************************************************
+	
+	Name:		spGetStoresByItem
+	Purpose:	Gets all stores that hold a given itemId
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of stores with given item
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGetStoresByItem
+	@itemId INT
+AS
+BEGIN
+	SELECT (
+		SELECT	s.storeId, s.address, s.storeName, s.contactName, s.phoneNumber, s.website
+		FROM Store s
+		JOIN StoreItem si ON si.itemId = @itemId AND si.storeId = s.storeId
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spGetStoreItemsByPrice
+	Purpose:	Gets all store items that are less than or equal to a price
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of store items that are less than or equal to a price
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGetStoreItemsByPrice
+	@price MONEY
+AS
+BEGIN
+	SELECT (
+		SELECT	si.itemId, si.storeId, si.userId, si.price, si.date, si.comments, 
+				[itemName] = (SELECT itemName FROM Item WHERE itemId = si.itemId),
+				[storeName] = (SELECT storeName FROM Store WHERE storeId = si.storeId)
+		FROM StoreItem si
+		WHERE si.price <= @price
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spListStores 
+	Purpose:	Lists all stores in database
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of stores
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spListStores
+	
+AS
+BEGIN
+	SELECT (
+		SELECT	*
+		FROM Store
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spListBrands
+	Purpose:	Lists all brands in database
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of brands
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spListBrands
+	
+AS
+BEGIN
+	SELECT (
+		SELECT	brandId, brandName, brandDescription
+		FROM vwBrand
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spListUsers
+	Purpose:	Lists all users in database
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of users
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spListUsers
+	
+AS
+BEGIN
+	SELECT (
+		SELECT	userId, firstName, lastName, userName, email, password, goodLoginCount, badLoginCount
+		FROM [User]
+		WHERE isDeleted = 0
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListItems
+	Purpose:	Lists all items in database
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of items
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spListItems
+	
+AS
+BEGIN
+	SELECT(
+		SELECT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
+				[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
+				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+		FROM vwItem i
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spGetStoreItemsByUser
+	Purpose:	Lists all storeItems given a userId
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of storeItems from user
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGetStoreItemsByUser
+	@userId	INT
+AS
+BEGIN
+	SELECT(
+		SELECT price, date, comments,
+		[Store]	=	(SELECT storeId, address, storeName, contactName, phoneNumber, website FROM Store s WHERE s.storeId = si.storeId AND s.isDeleted = 0 FOR JSON PATH),
+		[Item]	=	(SELECT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
+						[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
+						[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+					FROM vwItem i
+					WHERE i.itemId = si.itemId
+					FOR JSON PATH)  
+		FROM storeItem si
+		WHERE si.userId = @userId
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spGetItemsByBrand
+	Purpose:	Lists all items that a given brand has
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of items with a common brand
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGetItemsByBrand
+	@brandId	INT
+AS
+BEGIN
+	SELECT(
+		SELECT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
+				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+		FROM vwBrand b
+		JOIN Item i ON i.brandId = b.brandId
+		WHERE b.brandId = @brandId
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spListStoreItems
+	Purpose:	Lists all items from a given store
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list of items from a certain store
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spListStoreItems
+	@storeId	INT
+AS
+BEGIN
+	SELECT(
+		SELECT DISTINCT	i.itemId, i.itemName, i.itemDescription, i.avgPrice, si.price,
+						[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
+						[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+		FROM Store s
+		JOIN StoreItem si	ON si.storeId = s.storeId
+		JOIN Item i			ON i.itemId = si.itemId
+		WHERE s.storeId = @storeId AND s.isDeleted = 0
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spGetUsersByStore
+	Purpose:	Lists all users who have contributed to a given store
+	Written:	5/7/2020
+	Author:		John Murray
+	Returns:	JSON list users who contributed to a certain store
+
+**************************************************************************************************/
+
+CREATE PROCEDURE spGetUsersByStore
+	@storeId	INT
+AS
+BEGIN
+	SELECT(
+		SELECT DISTINCT u.userId, u.firstName, u.lastName, u.userName, u.email, u.goodLoginCount, u.badLoginCount
+		FROM Store s
+		JOIN StoreItem si	ON si.storeId = s.storeId
+		JOIN [User] u		ON u.userId = si.userId
+		WHERE s.storeId = @storeId AND s.isDeleted = 0
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+
+GO
 
 
 
@@ -768,9 +1056,18 @@ SET IDENTITY_INSERT Item OFF
 
 
 
-
 -- spAddUpdateDelete_StoreItem and trigger tests
 EXEC spAddUpdateDelete_StoreItem 0, 1, 1, 1, 1.69, '2020-05-07 23:06:22.983', 'Nice';
 EXEC spAddUpdateDelete_StoreItem 0, 1, 1, 1, 2.45, '2020-05-07 23:06:22.983', 'Nice';
 SELECT * FROM StoreItem;
 SELECT * FROM Item;
+
+-- Add to StoreItem
+INSERT INTO StoreItem (itemId, storeId, userId, price, date, comments)
+	VALUES	(2, 1, 1, 19.99, '3-7-2020', 'ayyo i found this cool pair o nike shoes'),
+			(1, 2, 1, 17.98, '4-2-2020', 'also nike shoes'),
+			(2, 3, 2, 4.98, '4-3-2020', 'COOL CHIPS'),
+			(4, 3, 4, 1.15, '4-23-2020', ''),
+			(4, 2, 4, 0.98, '4-26-2020', 'ijqwfijqwfd'),
+			(4, 1, 3, 1.30, '4-29-2020', 'mmm'),
+			(4, 4, 5, 1.10, '5-1-2020', ': )')
