@@ -347,7 +347,7 @@ BEGIN TRAN
 	BEGIN TRY 
 		IF(@userId = 0) BEGIN																				-- ADD
 			IF(EXISTS (SELECT NULL FROM [User] WHERE userName = @userName OR email = @email)) BEGIN
-				SELECT -1
+				SELECT -1 AS userId
 			END
 			ELSE BEGIN
 				INSERT INTO [User] (firstName, lastName, userName, email, [password]) 
@@ -558,7 +558,7 @@ BEGIN TRAN
 	BEGIN TRY 
 		IF(@itemId = 0) BEGIN																				-- ADD
 			IF(NOT EXISTS (SELECT NULL FROM Brand WHERE brandId = @brandId) OR NOT EXISTS(SELECT NULL FROM ItemType WHERE itemTypeId = @itemTypeId)) BEGIN
-				SELECT -1
+				SELECT -1 AS itemId
 			END
 			ELSE BEGIN
 				INSERT INTO Item (brandId, itemTypeId, itemName, itemDescription)
@@ -577,7 +577,7 @@ BEGIN TRAN
 			END
 		END ELSE BEGIN																						-- UPDATE
 			IF(NOT EXISTS (SELECT NULL FROM Brand WHERE brandId = @brandId) OR NOT EXISTS(SELECT NULL FROM ItemType WHERE itemTypeId = @itemTypeId)) BEGIN
-				SELECT -1
+				SELECT -1 AS itemId
 			END ELSE BEGIN
 				UPDATE Item SET brandId = @brandId, itemTypeId = @itemTypeId, itemName = @itemName, itemDescription = @itemDescription
 				WHERE itemId = @itemId			
@@ -618,13 +618,13 @@ BEGIN TRAN
 		IF(@storeItemId = 0) BEGIN																			-- ADD
 			IF(NOT EXISTS (SELECT NULL FROM Item WHERE itemId = @itemId) OR NOT EXISTS(SELECT NULL FROM Store WHERE storeId = @storeId) 
 				OR NOT EXISTS (SELECT NULL FROM [User] WHERE userId = @userId)) BEGIN
-				SELECT -1
+				SELECT -1 AS storeItemId
 			END
 			ELSE BEGIN
 				INSERT INTO StoreItem (itemId, storeId, userId, price, [date], comments)
 				VALUES (@itemId, @storeId, @userId, @price, @date, @comments)
 
-				SELECT @@IDENTITY AS storeItemid
+				SELECT @@IDENTITY AS storeItemId
 			END
 		END ELSE IF(@delete = 1) BEGIN																		-- DELETE															
 				DELETE FROM StoreItem
@@ -633,7 +633,7 @@ BEGIN TRAN
 		END ELSE BEGIN																						-- UPDATE
 			IF(NOT EXISTS (SELECT NULL FROM Item WHERE itemId = @itemId) OR NOT EXISTS(SELECT NULL FROM Store WHERE storeId = @storeId) 
 				OR NOT EXISTS (SELECT NULL FROM [User] WHERE userId = @userId)) BEGIN
-				SELECT -1
+				SELECT -1 AS storeItemId
 			END ELSE BEGIN
 				UPDATE StoreItem SET itemId = @itemId, storeId = @storeId, userId = @userId, price = @price, [date] = @date, comments = @comments
 				WHERE storeItemId = @storeItemId
@@ -665,11 +665,11 @@ AS BEGIN
 	IF EXISTS (SELECT NULL FROM vwUser WHERE [password] = dbo.fnEncrypt(@password) AND userID = @userId) BEGIN			-- Check if the token is valid and it's been less than one hour
 		UPDATE [User] SET goodLoginCount = goodLoginCount + 1
 		WHERE userId = @userId
-		SELECT 0
+		SELECT 0 AS success
 	END ELSE BEGIN
 		UPDATE [User] SET badLoginCount = badLoginCount + 1
 		WHERE userId = @userId
-		SELECT -1
+		SELECT -1 AS success
 	END
 END
 
@@ -692,9 +692,9 @@ CREATE PROCEDURE spConfirm_Email
 AS BEGIN
 	IF EXISTS (SELECT NULL FROM UserRegistration WHERE token = @token AND DATEDIFF(HOUR, regDate, GETDATE()) <= 1) BEGIN			-- Check if the token is valid and it's been less than one hour
 		UPDATE UserRegistration SET isActive = 1 WHERE userId = @userId
-		SELECT 0
+		SELECT 0 AS success
 	END ELSE BEGIN
-		SELECT -1
+		SELECT -1 AS success
 	END
 END
 
