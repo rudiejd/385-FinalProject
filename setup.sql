@@ -165,28 +165,69 @@ ON StoreItem AFTER INSERT, UPDATE, DELETE AS
 BEGIN
 	DECLARE @price MONEY, @itemId INT
 	IF EXISTS (SELECT TOP(1) NULL FROM deleted) BEGIN
-		DECLARE delCur CURSOR FOR (SELECT price, itemId FROM deleted)
-
-		OPEN delCur
-		FETCH NEXT FROM delCur
-		INTO @price, @itemId
-
-		WHILE @@FETCH_STATUS = 0
-		BEGIN
-			IF (EXISTS (SELECT * FROM StoreItem WHERE itemId = @itemid)) BEGIN
-				UPDATE Item SET avgPrice = ( ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) *  ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) + 1 )) - @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) )
-				WHERE itemid = @itemId
-			END ELSE BEGIN
-				UPDATE Item Set avgPrice = 0
-				WHERE itemId = @itemId
-			END
-			FETCH NEXT FROM delCur
+		 IF (UPDATE(price) OR UPDATE(itemId)) BEGIN																												-- if it's an update
+			DECLARE @oldPrice MONEY, @oldItemId INT;
+			
+			DECLARE updCurIns CURSOR FOR (SELECT price, itemId FROM inserted)
+			OPEN updCurIns
+			DECLARE updCurDel CURSOR FOR (SELECT price, itemId FROM deleted)
+			OPEN updCurDel
+			
+			FETCH NEXT FROM updCurIns
 			INTO @price, @itemId
-		END
-
-		CLOSE delCur
-		DEALLOCATE delCur;
-	END ELSE BEGIN
+			
+			FETCH NEXT FROM updCurDel
+			INTO @oldPrice, @oldItemId
+			
+			WHILE @@FETCH_STATUS = 0
+			BEGIN
+				IF @itemId = @oldItemId BEGIN
+					UPDATE Item SET avgPrice = ( ((SELECT avgPrice FROM Item WHERE itemId = @itemid)*(SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId)) - @oldPrice + @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) ) 
+					WHERE itemId = @itemId
+				END ELSE BEGIN
+					UPDATE Item SET avgPrice = ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) + @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) ) 
+					WHERE itemId = @itemId
+					FETCH NEXT FROM insCur
+					INTO @price, @itemId
+				END
+			
+				FETCH NEXT FROM updCurIns
+				INTO @price, @itemId
+			
+				FETCH NEXT FROM updCurDel
+				INTO @oldPrice, @oldItemId
+			END
+			
+			CLOSE updCurIns
+			DEALLOCATE updCurIns
+			
+			CLOSE updCurDel
+			DEALLOCATE updCurDel
+			
+			END ELSE BEGIN																																			-- if it's a delete
+				DECLARE delCur CURSOR FOR (SELECT price, itemId FROM deleted)
+			
+				OPEN delCur
+				FETCH NEXT FROM delCur
+				INTO @price, @itemId
+			
+				WHILE @@FETCH_STATUS = 0
+				BEGIN
+					IF (EXISTS (SELECT * FROM StoreItem WHERE itemId = @itemid)) BEGIN
+						UPDATE Item SET avgPrice = ( ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) *  ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) + 1 )) - @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) )
+						WHERE itemid = @itemId
+					END ELSE BEGIN
+						UPDATE Item Set avgPrice = 0
+						WHERE itemId = @itemId
+					END
+					FETCH NEXT FROM delCur
+					INTO @price, @itemId
+				END
+			
+				CLOSE delCur
+				DEALLOCATE delCur;
+			END
+	END ELSE BEGIN																																				-- otherwise it's just an add
 		DECLARE insCur CURSOR FOR (SELECT price, itemId FROM inserted)
 		OPEN insCur
 		FETCH NEXT FROM insCur
@@ -1369,7 +1410,9 @@ EXEC spAddUpdateDelete_StoreItem 3, 0, 0, 0, 0, '', '', 1
 SELECT * FROM StoreItem																																				-- avgPrice for Item 1 should be 1.69
 SELECT * FROM Item;
 
-EXEC spAddUpdateDelete_StoreItem 2, 1, 1, 1, 4.00, '2020-05-07 23:06:22.983', 'Nice'																				-- avgPrice for Item 1 should be 2.00
+
+
+EXEC spAddUpdateDelete_StoreItem 2, 1, 1, 1, 4.00, '2020-05-07 23:06:22.983', 'Nice'																				-- avgPrice for Item 1 should be 4.00
 SELECT * FROM StoreItem;
 SELECT * FROM Item
 
