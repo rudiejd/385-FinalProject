@@ -13,7 +13,7 @@ USE MASTER;
 
 GO
 
-DROP DATABASE IF EXISTS StoreDb;
+DROP DATABASE IF EXISTS StoreDB;
 
 GO
 
@@ -1029,6 +1029,240 @@ BEGIN
 END
 
 GO
+
+
+/*************************************************************************************************
+	
+	Name:		spGet_CheapestItems
+	Purpose:	List items by avg price in order from cheap to expensive
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of items sorted by price (ascending)
+
+**************************************************************************************************/
+CREATE PROCEDURE spGet_CheapestItems
+AS
+BEGIN
+	SELECT (
+		SELECT *
+		FROM Item
+		WHERE isDeleted = 0
+		ORDER BY avgPrice
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spGet_ExpensiveItems
+	Purpose:	List items by avg price in order from highest to lowest
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of items sorted by price (descending)
+
+**************************************************************************************************/
+CREATE PROCEDURE spGet_ExpensiveItems
+AS
+BEGIN
+	SELECT (
+		SELECT *
+		FROM Item
+		WHERE isDeleted = 0
+		ORDER BY avgPrice DESC
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spCheckSuspiciousLoginCount
+	Purpose:	Checks good/bad login counts to check for suspicious activity
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of userId, email, and badLoginCount for badLoginCounts over 100
+
+**************************************************************************************************/
+CREATE PROCEDURE spCheckSuspiciousLoginCount
+AS
+BEGIN
+	SELECT (
+		SELECT userId, email, badLoginCount 
+		FROM [User]
+		WHERE badLoginCount > 100
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListDeletedUsers
+	Purpose:	Lists the users that have been soft-deleted
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of users' firstName, lastName, userName, and email
+
+**************************************************************************************************/
+CREATE PROCEDURE spListDeletedUsers
+AS
+BEGIN
+	SELECT (
+		SELECT firstName, lastName, userName, email
+		FROM [User]
+		WHERE isDeleted = 1
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListDeletedItems
+	Purpose:	Lists the items that have been soft-deleted
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of the items' itemId and itemName 
+
+**************************************************************************************************/
+CREATE PROCEDURE spListDeletedItems
+AS
+BEGIN
+	SELECT (
+		SELECT itemId, itemName
+		FROM Item
+		WHERE isDeleted = 1
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListDeletedBrands
+	Purpose:	Lists the brands that have been soft-deleted
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of the brands' itemId and itemName 
+
+**************************************************************************************************/
+CREATE PROCEDURE spListDeletedBrands
+AS
+BEGIN
+	SELECT (
+		SELECT brandId, brandName
+		FROM Brand
+		WHERE isDeleted = 1
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spGet_StoreItemCount
+	Purpose:	Given a storeId, counts how many items are attributed to the store in the database
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of the count of items attributed to @storeId
+
+**************************************************************************************************/
+CREATE PROCEDURE spGetStoreItemCount
+	@storeId	INT
+AS
+BEGIN
+	SELECT (
+		SELECT COUNT(*) AS storeItemsinStore
+		FROM StoreItem
+		WHERE storeId = @storeId
+		FOR JSON PATH
+	)FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListRelevantItems
+	Purpose:	Given an itemId, list all items with the same itemType
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON of items with the same itemType as the item with the given @itemId
+
+**************************************************************************************************/
+CREATE PROCEDURE spListRelevantItems
+	@itemId		INT
+AS
+BEGIN
+	SELECT (
+		SELECT	i.itemId, i.itemName, it.itemTypeName
+		FROM Item i JOIN itemType it on i.itemTypeId = it.itemTypeId
+		WHERE i.itemTypeId = (SELECT itemTypeId FROM Item WHERE itemId = @itemId)
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListStoresByBrand
+	Purpose:	List all the stores that carry a given brand
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON list of stores that carry a given brand
+
+**************************************************************************************************/
+CREATE PROCEDURE spListStoresByBrand
+	@brandId	INT
+AS
+BEGIN
+	SELECT (
+		SELECT	s.storeId, s.storeName, b.brandName AS carriedBrand
+		FROM	Store s		JOIN		StoreItem si ON s.storeId = si.storeId
+							JOIN		Item	  i  ON si.itemId = i.itemId
+							JOIN		Brand	  b	 ON i.brandId = b.brandId
+		WHERE b.brandId = @brandId
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+/*************************************************************************************************
+	
+	Name:		spListBrandsByStore
+	Purpose:	List all the brands that a given store carries
+	Written:	5/8/2020
+	Author:		Joe Faflik
+	Returns:	JSON list of brands that a given store carries
+
+**************************************************************************************************/
+CREATE PROCEDURE spListBrandsByStore
+	@storeId	INT
+AS
+BEGIN
+	SELECT (
+		SELECT	DISTINCT b.brandId, b.brandName, s.storeName as Carrier
+		FROM	Store s		JOIN		StoreItem si ON s.storeId = si.storeId
+							JOIN		Item	  i  ON si.itemId = i.itemId
+							JOIN		Brand	  b	 ON i.brandId = b.brandId
+		WHERE s.storeId = @storeId
+		FOR JSON PATH
+	) FOR XML PATH('')
+END
+GO
+
+
+
+
 
 
 /*
