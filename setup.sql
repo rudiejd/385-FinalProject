@@ -1179,7 +1179,7 @@ CREATE PROCEDURE spGetStoreItemCount
 AS
 BEGIN
 	SELECT (
-		SELECT COUNT(*) AS storeItemsinStore
+		SELECT COUNT(*) AS storeItemsInStore
 		FROM StoreItem
 		WHERE storeId = @storeId
 		FOR JSON PATH
@@ -1409,6 +1409,36 @@ EXEC spGet_StoreWithCheapestPrice 1;
 
 -- Get items submitted from these dates
 EXEC spGet_ItemsByDates '2020-05-06', '2020-05-08';
+
+-- Get cheapest items
+EXEC spGet_CheapestItems
+
+-- Get expensive items
+EXEC spGet_ExpensiveItems
+
+-- Check for suspicious login count
+EXEC spCheckSuspiciousLoginCount
+
+-- List soft deleted users
+EXEC spListDeletedUsers
+
+-- List soft deleted items
+EXEC spListDeletedItems 
+
+-- List soft deleted brands
+EXEC spListDeletedBrands
+
+-- Get the number of StoreItems in a store w/ storeId
+EXEC spGetStoreItemCount 1;
+
+-- List relevant items (with same itemType) given a itemId
+EXEC spListRelevantItems 3;
+
+-- Given a brandId, list stores that carry the brand
+EXEC spListStoresByBrand 2;
+
+-- Given a storeId, list brands in the store
+EXEC spListBrandsByStore 2;
 
 -- Make user
 EXEC spAddUpdateDelete_User 0, 'test', 'tess', 'testts', 'test@yahoo.com', 'testq';
