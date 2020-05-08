@@ -137,6 +137,21 @@ CREATE VIEW vwBrand AS
 
 GO
 
+CREATE VIEW vwStore AS
+	SELECT *
+	FROM Store
+	WHERE isDeleted = 0;
+
+GO
+
+CREATE VIEW vwItemType AS
+	SELECT *
+	FROM ItemType
+	WHERE isDeleted = 0;
+
+GO
+
+
 CREATE VIEW vwUser AS
 	SELECT *
 	FROM [User] u
@@ -775,8 +790,8 @@ BEGIN
 	SELECT (
 		SELECT DISTINCT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
 				[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
-				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
-		FROM Store s
+				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM vwItemType WHERE itemTypeId = i.itemTypeId FOR JSON PATH)
+		FROM vwStore s
 		JOIN StoreItem si	ON si.storeId = s.storeId
 		JOIN vwItem i		ON i.itemId = si.itemId
 		WHERE s.storeId = @storeId
@@ -804,7 +819,7 @@ AS
 BEGIN
 	SELECT (
 		SELECT	s.storeId, s.address, s.storeName, s.contactName, s.phoneNumber, s.website
-		FROM Store s
+		FROM vwStore s
 		JOIN StoreItem si ON si.itemId = @itemId AND si.storeId = s.storeId
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -829,8 +844,8 @@ AS
 BEGIN
 	SELECT (
 		SELECT	si.itemId, si.storeId, si.userId, si.price, si.date, si.comments, 
-				[itemName] = (SELECT itemName FROM Item WHERE itemId = si.itemId),
-				[storeName] = (SELECT storeName FROM Store WHERE storeId = si.storeId)
+				[itemName] = (SELECT itemName FROM vwItem WHERE itemId = si.itemId),
+				[storeName] = (SELECT storeName FROM vwStore WHERE storeId = si.storeId)
 		FROM StoreItem si
 		WHERE si.price <= @price
 		FOR JSON PATH
@@ -855,7 +870,7 @@ AS
 BEGIN
 	SELECT (
 		SELECT	*
-		FROM Store
+		FROM vwStore
 		FOR JSON PATH
 	) FOR XML PATH('')
 END
@@ -901,7 +916,7 @@ AS
 BEGIN
 	SELECT (
 		SELECT	userId, firstName, lastName, userName, email, goodLoginCount, badLoginCount
-		FROM [User]
+		FROM vwUser
 		WHERE isDeleted = 0
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -927,7 +942,7 @@ BEGIN
 	SELECT(
 		SELECT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
 				[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
-				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM vwItemType WHERE itemTypeId = i.itemTypeId FOR JSON PATH)
 		FROM vwItem i
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -951,10 +966,10 @@ AS
 BEGIN
 	SELECT(
 		SELECT price, date, comments,
-		[Store]	=	(SELECT storeId, address, storeName, contactName, phoneNumber, website FROM Store s WHERE s.storeId = si.storeId AND s.isDeleted = 0 FOR JSON PATH),
+		[Store]	=	(SELECT storeId, address, storeName, contactName, phoneNumber, website FROM vwStore s WHERE s.storeId = si.storeId FOR JSON PATH),
 		[Item]	=	(SELECT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
 						[brand] = (SELECT brandId, brandName, brandDescription FROM vwBrand WHERE brandId = i.brandId FOR JSON PATH),
-						[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+						[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM vwItemType WHERE itemTypeId = i.itemTypeId FOR JSON PATH)
 					FROM vwItem i
 					WHERE i.itemId = si.itemId
 					FOR JSON PATH)  
@@ -982,9 +997,9 @@ AS
 BEGIN
 	SELECT(
 		SELECT	i.itemId, i.itemName, i.itemDescription, i.avgPrice,
-				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM ItemType WHERE itemTypeId = i.itemTypeId AND isDeleted = 0 FOR JSON PATH)
+				[itemType] = (SELECT itemTypeId, itemTypeName, itemTypeDescription FROM vwItemType WHERE itemTypeId = i.itemTypeId FOR JSON PATH)
 		FROM vwBrand b
-		JOIN Item i ON i.brandId = b.brandId
+		JOIN vwItem i ON i.brandId = b.brandId
 		WHERE b.brandId = @brandId
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -1009,10 +1024,10 @@ AS
 BEGIN
 	SELECT(
 		SELECT DISTINCT u.userId, u.firstName, u.lastName, u.userName, u.email, u.goodLoginCount, u.badLoginCount
-		FROM Store s
+		FROM vwStore s
 		JOIN StoreItem si	ON si.storeId = s.storeId
-		JOIN [User] u		ON u.userId = si.userId
-		WHERE s.storeId = @storeId AND s.isDeleted = 0
+		JOIN vwUser u		ON u.userId = si.userId
+		WHERE s.storeId = @storeId 
 		FOR JSON PATH
 	) FOR XML PATH('')
 END
@@ -1036,7 +1051,7 @@ BEGIN
 	SELECT(
 		SELECT TOP(1) s.storeId, s.storeName
 		FROM StoreItem si
-		JOIN Store s	ON s.storeId = si.storeId
+		JOIN vwStore s	ON s.storeId = si.storeId
 		ORDER BY si.price
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -1063,7 +1078,7 @@ BEGIN
 	SELECT(
 		SELECT si.itemId, si.storeId, si.userId, si.price, si.date, i.itemName
 		FROM StoreItem si
-		JOIN Item i	ON i.itemId = si.itemId
+		JOIN vwItem i	ON i.itemId = si.itemId
 		WHERE si.date BETWEEN @startDate AND @endDate
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -1086,8 +1101,7 @@ AS
 BEGIN
 	SELECT (
 		SELECT *
-		FROM Item
-		WHERE isDeleted = 0
+		FROM vwItem
 		ORDER BY avgPrice
 		FOR JSON PATH
 	) FOR XML PATH('')
@@ -1416,6 +1430,14 @@ EXEC spAddUpdateDelete_StoreItem 2, 1, 1, 1, 4.00, '2020-05-07 23:06:22.983', 'N
 SELECT * FROM StoreItem;
 SELECT * FROM Item
 
+-- Confirm user 1's email
+DECLARE @tokenConfirm char(10)
+SELECT @tokenConfirm = token
+FROM UserRegistration
+WHERE userId = 1
+
+-- Confirm user email with token
+EXEC spConfirm_Email 1, @tokenConfirm;
 
 -- Get Items from Brick & Ivy
 EXEC spGet_StoreItemsByStore 1;
@@ -1454,22 +1476,22 @@ EXEC spGet_StoreWithCheapestPrice 1;
 EXEC spGet_ItemsByDates '2020-05-06', '2020-05-08';
 
 -- Get cheapest items
-EXEC spGet_CheapestItems
+EXEC spGet_CheapestItems;
 
 -- Get expensive items
-EXEC spGet_ExpensiveItems
+EXEC spGet_ExpensiveItems;
 
 -- Check for suspicious login count
-EXEC spCheckSuspiciousLoginCount
+EXEC spCheckSuspiciousLoginCount;
 
 -- List soft deleted users
-EXEC spListDeletedUsers
+EXEC spListDeletedUsers;
 
 -- List soft deleted items
-EXEC spListDeletedItems 
+EXEC spListDeletedItems;
 
 -- List soft deleted brands
-EXEC spListDeletedBrands
+EXEC spListDeletedBrands;
 
 -- Get the number of StoreItems in a store w/ storeId
 EXEC spGetStoreItemCount 1;
