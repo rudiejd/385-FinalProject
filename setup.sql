@@ -67,9 +67,16 @@ CREATE TABLE [User](
 )
 
 CREATE TABLE UserRegistration (
-	userId					INT				NOT NULL	PRIMARY KEY		IDENTITY,
-	isActive				BIT				DEFAULT 0	NOT NULL,
+	userId					INT				NOT NULL	FOREIGN KEY REFERENCES [User](userId),
+	isActive				BIT				NOT NULL	DEFAULT SUBSTRING(REPLACE(newid(), '-', ''), 1, 10),
+	regDate					DATETIME		NOT NULL	DEFAULT	GETDATE(),
 	token					CHAR(10)
+)
+
+CREATE TABLE PasswordReset (
+	userId					INT				NOT NULL	FOREIGN KEY REFERENCES [User](userId),
+	resetDate				DATETIME		NOT NULL	DEFAULT	GETDATE(),
+	token					CHAR(30)		NOT NULL	DEFAULT SUBSTRING(REPLACE(newid(), '-', ''), 1, 30)
 )
 
 CREATE TABLE Store(
@@ -83,7 +90,7 @@ CREATE TABLE Store(
 )
 
 CREATE TABLE StoreItem(
-	storeItemId				INT				NOT NULL	PRIMARY KEY,
+	storeItemId				INT				NOT NULL	PRIMARY KEY		IDENTITY,
 	itemId					INT				NOT NULL	FOREIGN KEY REFERENCES Item(itemId),
 	storeId					INT				NOT NULL	FOREIGN KEY REFERENCES Store(storeId),
 	userId					INT				NOT NULL	FOREIGN KEY REFERENCES [User](userId),
@@ -91,6 +98,20 @@ CREATE TABLE StoreItem(
 	[date]					DATETIME		NOT NULL,
 	comments				VARCHAR(200)	NOT NULL,
 )
+
+CREATE TABLE Error(
+	ERROR_NUMBER			INT				NOT NULL,   
+	ERROR_SEVERITY			INT				NOT NULL,   
+	ERROR_STATE				INT				NOT NULL,   
+	ERROR_PROCEDURE			VARCHAR(MAX)	NOT NULL,   
+	ERROR_LINE				INT				NOT NULL,   
+	ERROR_MESSAGE			VARCHAR(MAX)	NOT NULL,
+	ERROR_DATETIME			DATETIME		NOT NULL,
+	userName				VARCHAR(100)	NOT NULL,
+	params					VARCHAR(MAX)	NOT NULL,
+)
+	
+GO
 
 /*
 ==================================================================================================
@@ -118,8 +139,8 @@ GO
 
 CREATE VIEW vwUser AS
 	SELECT *
-	FROM [User]
-	WHERE isDeleted = 0;
+	FROM [User] u
+	WHERE isDeleted = 0 AND (SELECT isActive FROM UserRegistration ur WHERE ur.userId = u.userId) = 1;
 
 GO
 
@@ -153,8 +174,10 @@ BEGIN
 		WHILE @@FETCH_STATUS = 0
 		BEGIN
 
-			UPDATE Item SET avgPrice = ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) - @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) - 1 )
-
+			UPDATE Item SET avgPrice = ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) - @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) )
+			WHERE itemid = @itemId
+			FETCH NEXT FROM insCur
+			INTO @price, @itemId
 		END
 
 		CLOSE insCur
@@ -164,12 +187,13 @@ BEGIN
 		OPEN insCur
 		FETCH NEXT FROM insCur
 		INTO @price, @itemId
-
 		WHILE @@FETCH_STATUS = 0
 		BEGIN
 
-			UPDATE Item SET avgPrice = ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) + @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) + 1 )
-
+			UPDATE Item SET avgPrice = ( (SELECT avgPrice FROM Item WHERE itemId = @itemid) + @price ) / ( (SELECT COUNT(*) FROM StoreItem WHERE itemId = @itemId) ) 
+			WHERE itemId = @itemId
+			FETCH NEXT FROM insCur
+			INTO @price, @itemId
 		END
 
 		CLOSE insCur
@@ -233,8 +257,8 @@ AS
 BEGIN
      SET NOCOUNT ON;
      BEGIN TRY
-    	INSERT INTO errors (ERROR_NUMBER,   ERROR_SEVERITY,   ERROR_STATE,   ERROR_PROCEDURE,   ERROR_LINE,   ERROR_MESSAGE, userName, params)
-		SELECT				ERROR_NUMBER(), ERROR_SEVERITY(), ERROR_STATE(), ERROR_PROCEDURE(), ERROR_LINE(), ERROR_MESSAGE(), SUSER_NAME(), @params;
+    	INSERT INTO Error (ERROR_NUMBER,   ERROR_SEVERITY,   ERROR_STATE,   ERROR_PROCEDURE,   ERROR_LINE,   ERROR_MESSAGE, ERROR_DATETIME, userName, params)
+		SELECT				ERROR_NUMBER(), ERROR_SEVERITY(), ERROR_STATE(), ERROR_PROCEDURE(), ERROR_LINE(), ERROR_MESSAGE(), GETDATE(), SUSER_NAME(), @params;
      END TRY BEGIN CATCH END CATCH
 END
 
@@ -269,10 +293,13 @@ BEGIN TRAN
 				INSERT INTO [User] (firstName, lastName, userName, email, [password]) 
 				VALUES (@firstName, @lastName, @userName, @email, dbo.fnEncrypt(@password))
 
-				INSERT INTO UserRegistration (token) 
-				VALUES (SUBSTRING(REPLACE(newid(), '-', ''), 1, 10))
+				DECLARE @lastInsert INT;
+				SET @lastInsert = @@IDENTITY
 
-				SELECT @@IDENTITY AS userId
+				INSERT INTO UserRegistration (userId) 
+				VALUES (@lastInsert)
+
+				SELECT @lastInsert AS userId
 			END
 		END ELSE IF(@delete = 1) BEGIN																		-- DELETE
 			IF (EXISTS(SELECT NULL FROM StoreItem WHERE userId = @userId)) BEGiN							-- soft 
@@ -561,6 +588,102 @@ END
 
 GO
 
+/*************************************************************************************************
+	
+	Name:		spConfirm_Email
+	Purpose:	Confirms a user's email address and sets them to active
+	Written:	5/6/2020
+	Author:		JD Rudie
+	Returns:	0 if successful, -1 if not successful
+
+**************************************************************************************************/
+CREATE PROCEDURE spConfirm_Email
+	@userId			INT,
+	@token			CHAR(10)
+AS BEGIN
+	IF EXISTS (SELECT NULL FROM UserRegistration WHERE token = @token AND DATEDIFF(HOUR, regDate, GETDATE()) <= 1) BEGIN			-- Check if the token is valid and it's been less than one hour
+		UPDATE UserRegistration SET isActive = 1 WHERE userId = @userId
+		SELECT 0
+	END ELSE BEGIN
+		SELECT -1
+	END
+END
+
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spConfirm_ResetPassword
+	Purpose:	Confirms a user's password reset and changes user password
+	Written:	5/6/2020
+	Author:		JD Rudie
+	Returns:	0 if successful, -1 if not successful
+
+**************************************************************************************************/
+CREATE PROCEDURE spConfirm_PasswordReset
+	@userId			INT,
+	@token			CHAR(30),
+	@newPassword	NVARCHAR(4000)
+AS BEGIN
+	IF EXISTS (SELECT NULL FROM PasswordReset WHERE token = @token AND DATEDIFF(HOUR, resetDate, GETDATE()) <= 1) BEGIN		-- Check if the token is valid and it's been less than one hour
+		UPDATE [User] SET [password] = dbo.fnEncrypt(@newPassword) WHERE userId = @userId
+		SELECT 0
+	END ELSE BEGIN
+		SELECT -1
+	END
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spReset_Password
+	Purpose:	Set up a password reset by inserting a random token into the PasswordReset table
+	Written:	5/6/2020
+	Author:		JD Rudie
+	Returns:	0 if successful, -1 if not successful
+
+**************************************************************************************************/
+CREATE PROCEDURE spReset_Password
+	@userId			INT
+AS BEGIN
+	IF EXISTS (SELECT NULL FROM [User] WHERE userId = @userId) BEGIN
+		DELETE FROM PasswordReset WHERE userId = @userId												-- Delete last password reset entry if they choose to reset again
+		INSERT INTO PasswordReset (userId) VALUES (@userId)
+		SELECT 0
+	END ELSE BEGIN
+		SELECT -1
+	END
+END
+
+GO
+
+/*************************************************************************************************
+	
+	Name:		spReset_RegistrationToken
+	Purpose:	Resets the confirmation token sent to the user's email
+	Written:	5/6/2020
+	Author:		JD Rudie
+	Returns:	0 if successful, -1 if not successful
+
+**************************************************************************************************/
+CREATE PROCEDURE spReset_RegistrationToken
+	@userId			INT
+AS BEGIN
+	IF EXISTS (SELECT NULL FROM UserRegistration WHERE userId = @userId) BEGIN
+		DELETE FROM UserRegistration WHERE userId = @userId												
+		INSERT INTO UserRegistration (userId) VALUES (@userId)
+		SELECT 0
+	END ELSE BEGIN
+		SELECT -1
+	END
+END
+
+GO
+
+
+
 
 
 
@@ -643,3 +766,11 @@ INSERT INTO Item (itemId, brandId, itemTypeId, itemName, itemDescription, isDele
 
 SET IDENTITY_INSERT Item OFF
 
+
+
+
+-- spAddUpdateDelete_StoreItem and trigger tests
+EXEC spAddUpdateDelete_StoreItem 0, 1, 1, 1, 1.69, '2020-05-07 23:06:22.983', 'Nice';
+EXEC spAddUpdateDelete_StoreItem 0, 1, 1, 1, 2.45, '2020-05-07 23:06:22.983', 'Nice';
+SELECT * FROM StoreItem;
+SELECT * FROM Item;
